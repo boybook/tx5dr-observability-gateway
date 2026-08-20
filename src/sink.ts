@@ -1,4 +1,4 @@
-import Credential from '@alicloud/credentials';
+import Credential, { Config as CredentialConfig } from '@alicloud/credentials';
 import SlsClient, * as $Sls from '@alicloud/sls20201230';
 import * as $OpenApi from '@alicloud/openapi-client';
 import type { GatewayConfig } from './config.js';
@@ -12,6 +12,12 @@ export interface FlatLogRecord {
 export interface TelemetrySink {
   putInstallation(record: FlatLogRecord): Promise<void>;
   putEvents(records: FlatLogRecord[]): Promise<void>;
+}
+
+export interface AliyunTemporaryCredentials {
+  accessKeyId: string;
+  accessKeySecret: string;
+  securityToken: string;
 }
 
 export function commonFields(
@@ -81,8 +87,13 @@ export function mapTelemetryEvent(
 export class AliyunSlsSink implements TelemetrySink {
   private readonly client: SlsClient;
 
-  constructor(private readonly config: GatewayConfig) {
-    const credential = new Credential();
+  constructor(
+    private readonly config: GatewayConfig,
+    temporaryCredentials?: AliyunTemporaryCredentials,
+  ) {
+    const credential = temporaryCredentials
+      ? new Credential(new CredentialConfig({ type: 'sts', ...temporaryCredentials }))
+      : new Credential();
     this.client = new SlsClient(new $OpenApi.Config({
       credential,
       endpoint: config.SLS_ENDPOINT,
