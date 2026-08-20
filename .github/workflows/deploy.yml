@@ -1,0 +1,95 @@
+name: Deploy production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      ALIYUN_REGION: ${{ secrets.ALIYUN_REGION }}
+      ALIYUN_ACCOUNT_ID: ${{ secrets.ALIYUN_ACCOUNT_ID }}
+      ROS_STACK_NAME: ${{ secrets.ROS_STACK_NAME }}
+      SLS_ENDPOINT: ${{ secrets.SLS_ENDPOINT }}
+      SLS_PROJECT: ${{ secrets.SLS_PROJECT }}
+      SLS_INSTALLATIONS_LOGSTORE: ${{ secrets.SLS_INSTALLATIONS_LOGSTORE }}
+      SLS_EVENTS_LOGSTORE: ${{ secrets.SLS_EVENTS_LOGSTORE }}
+      FC_RUNTIME_LOGSTORE: ${{ secrets.FC_RUNTIME_LOGSTORE }}
+      APPLICATION_LOGSTORE: ${{ secrets.APPLICATION_LOGSTORE }}
+      DIAGNOSTIC_METADATA_LOGSTORE: ${{ secrets.DIAGNOSTIC_METADATA_LOGSTORE }}
+      DIAGNOSTICS_BUCKET: ${{ secrets.DIAGNOSTICS_BUCKET }}
+      FC_FUNCTION_NAME: ${{ secrets.FC_FUNCTION_NAME }}
+      FC_RUNTIME_ROLE_NAME: ${{ secrets.FC_RUNTIME_ROLE_NAME }}
+      TOKEN_SIGNING_KEY_CURRENT: ${{ secrets.TOKEN_SIGNING_KEY_CURRENT }}
+      TOKEN_SIGNING_KEY_PREVIOUS: ${{ secrets.TOKEN_SIGNING_KEY_PREVIOUS }}
+      TOKEN_SIGNING_KEY_ID: ${{ secrets.TOKEN_SIGNING_KEY_ID }}
+      INSTALLATION_HMAC_KEY: ${{ secrets.INSTALLATION_HMAC_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+
+      - name: Obtain temporary Alibaba Cloud credentials
+        uses: aliyun/configure-aliyun-credentials-action@v1
+        with:
+          role-to-assume: ${{ secrets.ALIYUN_DEPLOY_ROLE_ARN }}
+          oidc-provider-arn: ${{ secrets.ALIYUN_OIDC_PROVIDER_ARN }}
+          role-session-name: gh-${{ github.repository_id }}-${{ github.run_id }}
+          role-session-expiration: 1800
+          audience: sts.aliyuncs.com
+
+      - name: Install deployment tools
+        run: |
+          set -euo pipefail
+          npm install --global @serverless-devs/s@3.1.10
+          curl --fail --location --silent --show-error \
+            --output "$RUNNER_TEMP/aliyun.tgz" \
+            https://aliyuncli.alicdn.com/aliyun-cli-linux-latest-amd64.tgz
+          tar -xzf "$RUNNER_TEMP/aliyun.tgz" -C "$RUNNER_TEMP"
+          sudo install -m 0755 "$RUNNER_TEMP/aliyun" /usr/local/bin/aliyun
+
+      - name: Configure ephemeral CLI credentials
+        run: |
+          set -euo pipefail
+          aliyun configure set \
+            --mode StsToken \
+            --region "$ALIYUN_REGION" \
+            --access-key-id "$ALIBABA_CLOUD_ACCESS_KEY_ID" \
+            --access-key-secret "$ALIBABA_CLOUD_ACCESS_KEY_SECRET" \
+            --sts-token "$ALIBABA_CLOUD_SECURITY_TOKEN" >/dev/null
+
+      - name: Validate and deploy private infrastructure
+        run: |
+          set -euo pipefail
+          npm run infra:validate
+          npm run infra:deploy
+
+      - name: Deploy Function Compute gateway
+        run: |
+          set -euo pipefail
+          export AccessKeyID="$ALIBABA_CLOUD_ACCESS_KEY_ID"
+          export AccessKeySecret="$ALIBABA_CLOUD_ACCESS_KEY_SECRET"
+          export SecurityToken="$ALIBABA_CLOUD_SECURITY_TOKEN"
+          export AccountID="$ALIYUN_ACCOUNT_ID"
+          export FC_RUNTIME_ROLE_ARN="acs:ram::${ALIYUN_ACCOUNT_ID}:role/${FC_RUNTIME_ROLE_NAME}"
+          if ! s deploy --use-local --assume-yes >"$RUNNER_TEMP/serverless-deploy.log" 2>&1; then
+            echo 'Function deployment failed; detailed output is withheld because it may contain private cloud targets.' >&2
+            exit 1
+          fi
+          echo 'Function deployment completed.'

@@ -1,0 +1,302 @@
+ROSTemplateFormatVersion: '2015-09-01'
+Description: TX-5DR observability data plane and least-privilege FC runtime role
+
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues:
+      - prod
+  ProjectName:
+    Type: String
+    NoEcho: true
+  DiagnosticsBucketName:
+    Type: String
+    NoEcho: true
+  InstallationsLogstoreName:
+    Type: String
+    NoEcho: true
+  EventsLogstoreName:
+    Type: String
+    NoEcho: true
+  RuntimeLogstoreName:
+    Type: String
+    NoEcho: true
+  ApplicationLogstoreName:
+    Type: String
+    NoEcho: true
+  DiagnosticMetadataLogstoreName:
+    Type: String
+    NoEcho: true
+  RuntimeRoleName:
+    Type: String
+    NoEcho: true
+
+Resources:
+  ObservabilityProject:
+    Type: ALIYUN::SLS::Project
+    Properties:
+      Name:
+        Ref: ProjectName
+      Description: TX-5DR privacy-preserving telemetry and diagnostics metadata
+      DataRedundancyType: LRS
+      Tags:
+        - Key: Project
+          Value: TX5DR
+        - Key: Environment
+          Value:
+            Ref: Environment
+
+  TelemetryInstallations:
+    Type: ALIYUN::SLS::Logstore
+    Properties:
+      ProjectName:
+        Ref: ObservabilityProject
+      LogstoreName:
+        Ref: InstallationsLogstoreName
+      TTL: 3650
+      ShardCount: 1
+      AutoSplit: true
+      MaxSplitShard: 16
+      Mode: standard
+
+  TelemetryEvents:
+    Type: ALIYUN::SLS::Logstore
+    Properties:
+      ProjectName:
+        Ref: ObservabilityProject
+      LogstoreName:
+        Ref: EventsLogstoreName
+      TTL: 180
+      ShardCount: 1
+      AutoSplit: true
+      MaxSplitShard: 16
+      Mode: standard
+
+  GatewayRuntime:
+    Type: ALIYUN::SLS::Logstore
+    Properties:
+      ProjectName:
+        Ref: ObservabilityProject
+      LogstoreName:
+        Ref: RuntimeLogstoreName
+      TTL: 30
+      ShardCount: 1
+      AutoSplit: true
+      MaxSplitShard: 8
+      Mode: standard
+
+  ApplicationLogs:
+    Type: ALIYUN::SLS::Logstore
+    Properties:
+      ProjectName:
+        Ref: ObservabilityProject
+      LogstoreName:
+        Ref: ApplicationLogstoreName
+      TTL: 30
+      ShardCount: 1
+      AutoSplit: true
+      MaxSplitShard: 16
+      Mode: standard
+
+  DiagnosticMetadata:
+    Type: ALIYUN::SLS::Logstore
+    Properties:
+      ProjectName:
+        Ref: ObservabilityProject
+      LogstoreName:
+        Ref: DiagnosticMetadataLogstoreName
+      TTL: 365
+      ShardCount: 1
+      AutoSplit: true
+      MaxSplitShard: 8
+      Mode: standard
+
+  TelemetryInstallationsIndex:
+    Type: ALIYUN::SLS::Index
+    Properties:
+      ProjectName:
+        Ref: ObservabilityProject
+      LogstoreName:
+        Ref: TelemetryInstallations
+      FullTextIndex:
+        Enable: false
+      KeyIndices:
+        - Name: schema_version
+          Type: long
+          EnableAnalytics: true
+        - Name: event_id
+          Type: text
+          EnableAnalytics: true
+          CaseSensitive: true
+        - Name: event_name
+          Type: text
+          EnableAnalytics: true
+        - Name: received_at_ms
+          Type: long
+          EnableAnalytics: true
+        - Name: installation_key
+          Type: text
+          EnableAnalytics: true
+          CaseSensitive: true
+        - Name: app_version
+          Type: text
+          EnableAnalytics: true
+          CaseSensitive: true
+        - Name: build_channel
+          Type: text
+          EnableAnalytics: true
+        - Name: build_commit
+          Type: text
+          EnableAnalytics: true
+          CaseSensitive: true
+        - Name: distribution
+          Type: text
+          EnableAnalytics: true
+        - Name: os_family
+          Type: text
+          EnableAnalytics: true
+        - Name: arch
+          Type: text
+          EnableAnalytics: true
+
+  TelemetryEventsIndex:
+    Type: ALIYUN::SLS::Index
+    Properties:
+      ProjectName:
+        Ref: ObservabilityProject
+      LogstoreName:
+        Ref: TelemetryEvents
+      FullTextIndex:
+        Enable: false
+      KeyIndices:
+        - Name: schema_version
+          Type: long
+          EnableAnalytics: true
+        - Name: event_id
+          Type: text
+          EnableAnalytics: true
+          CaseSensitive: true
+        - Name: event_name
+          Type: text
+          EnableAnalytics: true
+        - Name: received_at_ms
+          Type: long
+          EnableAnalytics: true
+        - Name: occurred_at_ms
+          Type: long
+          EnableAnalytics: true
+        - Name: installation_key
+          Type: text
+          EnableAnalytics: true
+          CaseSensitive: true
+        - Name: session_id
+          Type: text
+          EnableAnalytics: true
+          CaseSensitive: true
+        - Name: app_version
+          Type: text
+          EnableAnalytics: true
+          CaseSensitive: true
+        - Name: build_channel
+          Type: text
+          EnableAnalytics: true
+        - Name: build_commit
+          Type: text
+          EnableAnalytics: true
+          CaseSensitive: true
+        - Name: distribution
+          Type: text
+          EnableAnalytics: true
+        - Name: os_family
+          Type: text
+          EnableAnalytics: true
+        - Name: arch
+          Type: text
+          EnableAnalytics: true
+        - Name: runtime_state
+          Type: text
+          EnableAnalytics: true
+        - Name: active_connections
+          Type: long
+          EnableAnalytics: true
+        - Name: uptime_seconds
+          Type: long
+          EnableAnalytics: true
+        - Name: reason
+          Type: text
+          EnableAnalytics: true
+
+  DiagnosticsBucket:
+    Type: ALIYUN::OSS::Bucket
+    Properties:
+      BucketName:
+        Ref: DiagnosticsBucketName
+      AccessControl: private
+      BlockPublicAccess: true
+      StorageClass: Standard
+      RedundancyType: LRS
+      DeletionForce: false
+      ServerSideEncryptionConfiguration:
+        SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Suspended
+      LifecycleConfiguration:
+        Rule:
+          - ID: expire-diagnostics
+            Prefix: diagnostics/
+            Status: Enabled
+            Expiration:
+              Days: 30
+            AbortMultipartUpload:
+              Days: 1
+      Tags:
+        Project: TX5DR
+        Environment:
+          Ref: Environment
+        Purpose: Diagnostics
+
+  GatewayRuntimeRole:
+    Type: ALIYUN::RAM::Role
+    Properties:
+      RoleName:
+        Ref: RuntimeRoleName
+      Description: Least-privilege SLS writer for TX-5DR observability gateway
+      MaxSessionDuration: 3600
+      DeletionForce: false
+      AssumeRolePolicyDocument:
+        Version: '1'
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service:
+                - fc.aliyuncs.com
+      Policies:
+        - PolicyName: tx5dr-observability-sls-write
+          Description: Write-only access to TX-5DR telemetry Logstores
+          PolicyDocument:
+            Version: '1'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - log:PostLogStoreLogs
+                Resource:
+                  - Fn::Sub: acs:log:${ALIYUN::Region}:*:project/${ProjectName}/logstore/${InstallationsLogstoreName}
+                  - Fn::Sub: acs:log:${ALIYUN::Region}:*:project/${ProjectName}/logstore/${EventsLogstoreName}
+
+Outputs:
+  ProjectName:
+    Value:
+      Ref: ObservabilityProject
+  DiagnosticsBucketName:
+    Value:
+      Ref: DiagnosticsBucket
+  RuntimeRoleName:
+    Value:
+      Ref: GatewayRuntimeRole
+  RuntimeRoleArn:
+    Value:
+      Fn::GetAtt:
+        - GatewayRuntimeRole
+        - Arn

@@ -1,0 +1,99 @@
+openapi: 3.1.0
+info:
+  title: TX-5DR Observability Gateway
+  version: 1.0.0
+servers:
+  - url: https://replace-with-fc-trigger-url
+paths:
+  /healthz:
+    get:
+      responses:
+        '200':
+          description: Gateway is ready
+  /v1/installations/register:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Registration'
+      responses:
+        '201':
+          description: Installation registered and token issued
+        '400':
+          description: Invalid request
+        '503':
+          description: SLS unavailable
+  /v1/telemetry/events:
+    post:
+      security:
+        - installationToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventBatch'
+      responses:
+        '202':
+          description: Events accepted
+        '400':
+          description: Invalid request
+        '401':
+          description: Invalid installation token
+        '429':
+          description: Rate limited
+        '503':
+          description: SLS unavailable
+components:
+  securitySchemes:
+    installationToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    AppMetadata:
+      type: object
+      additionalProperties: false
+      required: [version, build_channel, build_commit, distribution, os_family, arch]
+      properties:
+        version: { type: string, maxLength: 64 }
+        build_channel: { enum: [release, nightly] }
+        build_commit: { type: string, maxLength: 64 }
+        distribution: { enum: [electron, docker, android-bridge, linux-service, generic-server, web-dev] }
+        os_family: { enum: [win32, darwin, linux, android, other] }
+        arch: { enum: [x64, arm64, arm, other] }
+    Registration:
+      type: object
+      additionalProperties: false
+      required: [schema_version, registration_event_id, installation_id, app]
+      properties:
+        schema_version: { const: 1 }
+        registration_event_id: { type: string, format: uuid }
+        installation_id: { type: string, format: uuid }
+        app: { $ref: '#/components/schemas/AppMetadata' }
+    EventBatch:
+      type: object
+      additionalProperties: false
+      required: [schema_version, app, events]
+      properties:
+        schema_version: { const: 1 }
+        app: { $ref: '#/components/schemas/AppMetadata' }
+        events:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            type: object
+            additionalProperties: false
+            required: [event_id, event_name, occurred_at_ms, session_id, runtime_state, active_connections, uptime_seconds, reason]
+            properties:
+              event_id: { type: string, format: uuid }
+              event_name: { enum: [session_started, presence_snapshot, session_ended] }
+              occurred_at_ms: { type: integer }
+              session_id: { type: string, format: uuid }
+              runtime_state: { enum: [online, offline] }
+              active_connections: { type: integer, minimum: 0 }
+              uptime_seconds: { type: integer, minimum: 0 }
+              reason: { enum: [startup, heartbeat, connection_change, shutdown] }

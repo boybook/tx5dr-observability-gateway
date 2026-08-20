@@ -1,0 +1,34 @@
+{
+  "name": "tx5dr-observability-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Privacy-preserving telemetry and diagnostics ingress for TX-5DR",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "npm run public-config:check && npm run infra:lint && tsc --noEmit && npm test",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "public-config:check": "node scripts/check-public-config.mjs",
+    "infra:lint": "node scripts/lint-infra.mjs",
+    "infra:validate": "node scripts/validate-infra.mjs",
+    "infra:deploy": "node scripts/deploy-infra.mjs",
+    "deploy": "npm run check && npm run build && s deploy --use-local --assume-yes"
+  },
+  "dependencies": {
+    "@alicloud/credentials": "^2.4.0",
+    "@alicloud/openapi-client": "^0.4.14",
+    "@alicloud/sls20201230": "^5.6.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.17",
+    "esbuild": "^0.25.9",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4",
+    "yaml": "^2.9.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
