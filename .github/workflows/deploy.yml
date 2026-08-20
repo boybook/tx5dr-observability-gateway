@@ -15,6 +15,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     environment: production
     env:
