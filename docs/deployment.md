@@ -4,8 +4,8 @@ The repository is public, but its production topology is not. Create a protected
 
 - `ALIYUN_REGION`
 - `ALIYUN_ACCOUNT_ID`
-- `ALIYUN_OIDC_PROVIDER_ARN`
-- `ALIYUN_DEPLOY_ROLE_ARN`
+- `ALIYUN_ACCESS_KEY_ID`
+- `ALIYUN_ACCESS_KEY_SECRET`
 - `ROS_STACK_NAME`
 - `SLS_ENDPOINT`
 - `SLS_PROJECT`
@@ -24,8 +24,8 @@ The repository is public, but its production topology is not. Create a protected
 
 Use independent cryptographically random values of at least 32 bytes for the current token key and installation HMAC key. Keep the previous token key empty for the initial deployment. During rotation, move the old current key to the previous key, install a new current key, and change the key ID.
 
-The Alibaba Cloud OIDC provider and deployment role are one-time account bootstrap resources. Their trust policy must restrict the GitHub subject to this repository and the `production` environment. The deployment role needs only the FC, ROS, SLS, OSS, and runtime-role operations exercised by this stack. Do not grant it console login or a long-lived AccessKey.
+Use a dedicated RAM user or narrowly scoped existing RAM user whose AccessKey permits only the FC, ROS, SLS, OSS, and runtime-role operations exercised by this stack. GitHub cannot copy or reveal a Secret from another repository, so shared credentials must be entered separately or supplied through an organization-level Secret. Rotate the AccessKey if it has been exposed outside the protected Environment Secrets interface, and never grant the RAM user console login or unrelated account-management permissions.
 
-Protect the Environment with required reviewers if available. Pull requests, including fork pull requests, run only `.github/workflows/ci.yml` and cannot access production secrets. Leave the non-secret Environment Variable `DEPLOY_ENABLED` unset during bootstrap. After the OIDC role and every Environment Secret are ready, set it to `true`. A push to `main` then runs `.github/workflows/deploy.yml`, obtains a short-lived OIDC credential, updates the parameterized ROS stack, and deploys the function. Deployment output is withheld because Serverless Devs can print physical resource names.
+Protect the Environment with required reviewers if available. Pull requests, including fork pull requests, run only `.github/workflows/ci.yml` and cannot access production secrets. Leave the non-secret Environment Variable `DEPLOY_ENABLED` unset during bootstrap. After every Environment Secret is ready, set it to `true`. A push to `main` then runs `.github/workflows/deploy.yml`, configures the Alibaba Cloud CLI from the protected AccessKey Secrets, updates the parameterized ROS stack, and deploys the function. Deployment output is withheld because Serverless Devs can print physical resource names.
 
 The function's public HTTPS trigger URL is intentionally not treated as a secret: released clients must know it. It reveals neither SLS/OSS destinations nor cloud credentials.

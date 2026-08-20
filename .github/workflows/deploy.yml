@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: production
@@ -19,6 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     env:
+      ALIYUN_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+      ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
       ALIYUN_REGION: ${{ secrets.ALIYUN_REGION }}
       ALIYUN_ACCOUNT_ID: ${{ secrets.ALIYUN_ACCOUNT_ID }}
       ROS_STACK_NAME: ${{ secrets.ROS_STACK_NAME }}
@@ -46,15 +47,6 @@ jobs:
       - run: npm run check
       - run: npm run build
 
-      - name: Obtain temporary Alibaba Cloud credentials
-        uses: aliyun/configure-aliyun-credentials-action@v1
-        with:
-          role-to-assume: ${{ secrets.ALIYUN_DEPLOY_ROLE_ARN }}
-          oidc-provider-arn: ${{ secrets.ALIYUN_OIDC_PROVIDER_ARN }}
-          role-session-name: gh-${{ github.repository_id }}-${{ github.run_id }}
-          role-session-expiration: 1800
-          audience: sts.aliyuncs.com
-
       - name: Install deployment tools
         run: |
           set -euo pipefail
@@ -69,11 +61,10 @@ jobs:
         run: |
           set -euo pipefail
           aliyun configure set \
-            --mode StsToken \
+            --mode AK \
             --region "$ALIYUN_REGION" \
-            --access-key-id "$ALIBABA_CLOUD_ACCESS_KEY_ID" \
-            --access-key-secret "$ALIBABA_CLOUD_ACCESS_KEY_SECRET" \
-            --sts-token "$ALIBABA_CLOUD_SECURITY_TOKEN" >/dev/null
+            --access-key-id "$ALIYUN_ACCESS_KEY_ID" \
+            --access-key-secret "$ALIYUN_ACCESS_KEY_SECRET" >/dev/null
 
       - name: Validate and deploy private infrastructure
         run: |
@@ -84,9 +75,8 @@ jobs:
       - name: Deploy Function Compute gateway
         run: |
           set -euo pipefail
-          export AccessKeyID="$ALIBABA_CLOUD_ACCESS_KEY_ID"
-          export AccessKeySecret="$ALIBABA_CLOUD_ACCESS_KEY_SECRET"
-          export SecurityToken="$ALIBABA_CLOUD_SECURITY_TOKEN"
+          export AccessKeyID="$ALIYUN_ACCESS_KEY_ID"
+          export AccessKeySecret="$ALIYUN_ACCESS_KEY_SECRET"
           export AccountID="$ALIYUN_ACCOUNT_ID"
           export FC_RUNTIME_ROLE_ARN="acs:ram::${ALIYUN_ACCOUNT_ID}:role/${FC_RUNTIME_ROLE_NAME}"
           if ! s deploy --use-local --assume-yes >"$RUNNER_TEMP/serverless-deploy.log" 2>&1; then

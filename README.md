@@ -31,7 +31,7 @@ npm run build
 s deploy
 ```
 
-The complete secret inventory, OIDC boundary, and automated deployment behavior are documented in `docs/deployment.md`.
+The complete secret inventory, credential boundary, and automated deployment behavior are documented in `docs/deployment.md`.
 
 The public HTTP trigger uses application-level Bearer tokens. `GET /healthz` is public; registration is unauthenticated and rate-limited; telemetry events require a signed installation token.
 
