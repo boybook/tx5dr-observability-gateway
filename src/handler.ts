@@ -7,6 +7,16 @@ import { mapRegistration, mapTelemetryEvent, type TelemetrySink } from './sink.j
 const MAX_BODY_BYTES = 32 * 1024;
 const MAX_CLOCK_SKEW_MS = 24 * 60 * 60 * 1000;
 
+function classifyOperationalError(error: unknown): string {
+  const message = error instanceof Error ? error.message : '';
+  if (/NoPermission|AccessDenied|Forbidden|Unauthorized/i.test(message)) return 'sls_permission_denied';
+  if (/InvalidAccessKeyId|SignatureDoesNotMatch|SecurityToken/i.test(message)) return 'sls_credential_rejected';
+  if (/ProjectNotExist/i.test(message)) return 'sls_project_not_found';
+  if (/LogStoreNotExist/i.test(message)) return 'sls_logstore_not_found';
+  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|getaddrinfo/i.test(message)) return 'sls_endpoint_unreachable';
+  return 'sls_write_failed';
+}
+
 interface FcEvent {
   rawPath?: string;
   path?: string;
@@ -161,8 +171,13 @@ export function createHandler(options: {
       if (kind === 'invalid_event' || error instanceof SyntaxError || (error && typeof error === 'object' && 'issues' in error)) {
         return response(400, { error: 'invalid_request', request_id: requestId });
       }
-      console.error(JSON.stringify({ level: 'error', event: 'request_failed', request_id: requestId, error_kind: kind }));
-      return response(503, { error: 'temporarily_unavailable', request_id: requestId }, { 'retry-after': '30' });
+      const diagnosticCode = classifyOperationalError(error);
+      console.error(JSON.stringify({ level: 'error', event: 'request_failed', request_id: requestId, error_kind: diagnosticCode }));
+      return response(503, {
+        error: 'temporarily_unavailable',
+        diagnostic_code: diagnosticCode,
+        request_id: requestId,
+      }, { 'retry-after': '30' });
     }
   };
 }

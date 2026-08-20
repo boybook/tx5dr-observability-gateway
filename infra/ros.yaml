@@ -83,6 +83,17 @@ Resources:
       MaxSplitShard: 8
       Mode: standard
 
+  GatewayRuntimeIndex:
+    Type: ALIYUN::SLS::Index
+    DependsOn: GatewayRuntime
+    Properties:
+      ProjectName:
+        Ref: ObservabilityProject
+      LogstoreName:
+        Ref: RuntimeLogstoreName
+      FullTextIndex:
+        Enable: true
+
   ApplicationLogs:
     Type: ALIYUN::SLS::Logstore
     Properties:

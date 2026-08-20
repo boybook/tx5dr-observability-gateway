@@ -142,4 +142,26 @@ describe('gateway handler', () => {
     expect(result.statusCode).toBe(400);
     expect(JSON.parse(result.body).error).toBe('event_time_out_of_range');
   });
+
+  it('returns a bounded diagnostic code without exposing sink errors', async () => {
+    const sink: TelemetrySink = {
+      async putInstallation() { throw new Error('getaddrinfo ENOTFOUND private-target.example'); },
+      async putEvents() { throw new Error('unused'); },
+    };
+    const handler = createHandler({ config: CONFIG, sink, now: () => NOW });
+    const result = await handler(request('/v1/installations/register', {
+      schema_version: 1,
+      registration_event_id: 'd1533337-e79f-4fc1-b550-4b8c1cf9ec79',
+      installation_id: 'ad3be608-5c6f-4fda-a524-48c8fa8cff4b',
+      app: APP,
+    }), { requestId: 'register-request' });
+
+    expect(result.statusCode).toBe(503);
+    expect(JSON.parse(result.body)).toEqual({
+      error: 'temporarily_unavailable',
+      diagnostic_code: 'sls_endpoint_unreachable',
+      request_id: 'register-request',
+    });
+    expect(result.body).not.toContain('private-target.example');
+  });
 });
