@@ -1,6 +1,5 @@
 import Credential, { Config as CredentialConfig } from '@alicloud/credentials';
-import SlsClient, * as $Sls from '@alicloud/sls20201230';
-import * as $OpenApi from '@alicloud/openapi-client';
+import SlsClient from '@alicloud/log';
 import type { GatewayConfig } from './config.js';
 import type { AppMetadata, Registration, TelemetryEvent } from './schema.js';
 
@@ -94,10 +93,23 @@ export class AliyunSlsSink implements TelemetrySink {
     const credential = temporaryCredentials
       ? new Credential(new CredentialConfig({ type: 'sts', ...temporaryCredentials }))
       : new Credential();
-    this.client = new SlsClient(new $OpenApi.Config({
-      credential,
+    this.client = new SlsClient({
+      credentialsProvider: {
+        async getCredentials() {
+          const current = await credential.getCredential();
+          if (!current.accessKeyId || !current.accessKeySecret) {
+            throw new Error('Missing Alibaba Cloud credentials');
+          }
+          return {
+            accessKeyId: current.accessKeyId,
+            accessKeySecret: current.accessKeySecret,
+            securityToken: current.securityToken,
+          };
+        },
+      },
       endpoint: config.SLS_ENDPOINT,
-    }));
+      use_https: true,
+    });
   }
 
   putInstallation(record: FlatLogRecord): Promise<void> {
@@ -109,15 +121,14 @@ export class AliyunSlsSink implements TelemetrySink {
   }
 
   private async put(logstore: string, records: FlatLogRecord[]): Promise<void> {
-    const logItems = records.map((record) => new $Sls.LogItem({
-      time: record.timeSeconds,
-      contents: Object.entries(record.fields).map(([key, value]) => new $Sls.LogContent({
-        key,
-        value: String(value),
+    await this.client.postLogStoreLogs(this.config.SLS_PROJECT, logstore, {
+      topic: 'tx5dr-observability',
+      logs: records.map((record) => ({
+        timestamp: record.timeSeconds,
+        content: Object.fromEntries(
+          Object.entries(record.fields).map(([key, value]) => [key, String(value)]),
+        ),
       })),
-    }));
-    await this.client.putLogs(this.config.SLS_PROJECT, logstore, new $Sls.PutLogsRequest({
-      body: new $Sls.LogGroup({ topic: 'tx5dr-observability', logItems }),
-    }));
+    });
   }
 }
