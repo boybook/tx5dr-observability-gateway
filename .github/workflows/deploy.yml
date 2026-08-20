@@ -22,15 +22,11 @@ jobs:
       ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
       ALIYUN_REGION: ${{ secrets.ALIYUN_REGION }}
       ALIYUN_ACCOUNT_ID: ${{ secrets.ALIYUN_ACCOUNT_ID }}
-      ROS_STACK_NAME: ${{ secrets.ROS_STACK_NAME }}
       SLS_ENDPOINT: ${{ secrets.SLS_ENDPOINT }}
       SLS_PROJECT: ${{ secrets.SLS_PROJECT }}
       SLS_INSTALLATIONS_LOGSTORE: ${{ secrets.SLS_INSTALLATIONS_LOGSTORE }}
       SLS_EVENTS_LOGSTORE: ${{ secrets.SLS_EVENTS_LOGSTORE }}
       FC_RUNTIME_LOGSTORE: ${{ secrets.FC_RUNTIME_LOGSTORE }}
-      APPLICATION_LOGSTORE: ${{ secrets.APPLICATION_LOGSTORE }}
-      DIAGNOSTIC_METADATA_LOGSTORE: ${{ secrets.DIAGNOSTIC_METADATA_LOGSTORE }}
-      DIAGNOSTICS_BUCKET: ${{ secrets.DIAGNOSTICS_BUCKET }}
       FC_FUNCTION_NAME: ${{ secrets.FC_FUNCTION_NAME }}
       FC_RUNTIME_ROLE_NAME: ${{ secrets.FC_RUNTIME_ROLE_NAME }}
       TOKEN_SIGNING_KEY_CURRENT: ${{ secrets.TOKEN_SIGNING_KEY_CURRENT }}
@@ -48,29 +44,7 @@ jobs:
       - run: npm run build
 
       - name: Install deployment tools
-        run: |
-          set -euo pipefail
-          npm install --global @serverless-devs/s@3.1.10
-          curl --fail --location --silent --show-error \
-            --output "$RUNNER_TEMP/aliyun.tgz" \
-            https://aliyuncli.alicdn.com/aliyun-cli-linux-latest-amd64.tgz
-          tar -xzf "$RUNNER_TEMP/aliyun.tgz" -C "$RUNNER_TEMP"
-          sudo install -m 0755 "$RUNNER_TEMP/aliyun" /usr/local/bin/aliyun
-
-      - name: Configure ephemeral CLI credentials
-        run: |
-          set -euo pipefail
-          aliyun configure set \
-            --mode AK \
-            --region "$ALIYUN_REGION" \
-            --access-key-id "$ALIYUN_ACCESS_KEY_ID" \
-            --access-key-secret "$ALIYUN_ACCESS_KEY_SECRET" >/dev/null
-
-      - name: Validate and deploy private infrastructure
-        run: |
-          set -euo pipefail
-          npm run infra:validate
-          npm run infra:deploy
+        run: npm install --global @serverless-devs/s@3.1.10
 
       - name: Deploy Function Compute gateway
         run: |

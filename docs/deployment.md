@@ -6,15 +6,11 @@ The repository is public, but its production topology is not. Create a protected
 - `ALIYUN_ACCOUNT_ID`
 - `ALIYUN_ACCESS_KEY_ID`
 - `ALIYUN_ACCESS_KEY_SECRET`
-- `ROS_STACK_NAME`
 - `SLS_ENDPOINT`
 - `SLS_PROJECT`
 - `SLS_INSTALLATIONS_LOGSTORE`
 - `SLS_EVENTS_LOGSTORE`
 - `FC_RUNTIME_LOGSTORE`
-- `APPLICATION_LOGSTORE`
-- `DIAGNOSTIC_METADATA_LOGSTORE`
-- `DIAGNOSTICS_BUCKET`
 - `FC_FUNCTION_NAME`
 - `FC_RUNTIME_ROLE_NAME`
 - `TOKEN_SIGNING_KEY_CURRENT`
@@ -24,8 +20,10 @@ The repository is public, but its production topology is not. Create a protected
 
 Use independent cryptographically random values of at least 32 bytes for the current token key and installation HMAC key. Keep the previous token key empty for the initial deployment. During rotation, move the old current key to the previous key, install a new current key, and change the key ID.
 
-Use a dedicated RAM user or narrowly scoped existing RAM user whose AccessKey permits only the FC, ROS, SLS, OSS, and runtime-role operations exercised by this stack. GitHub cannot copy or reveal a Secret from another repository, so shared credentials must be entered separately or supplied through an organization-level Secret. Rotate the AccessKey if it has been exposed outside the protected Environment Secrets interface, and never grant the RAM user console login or unrelated account-management permissions.
+Use a dedicated RAM user or narrowly scoped existing RAM user whose AccessKey permits only the FC operations exercised by this deployment and `ram:PassRole` for the existing runtime role. GitHub cannot copy or reveal a Secret from another repository, so shared credentials must be entered separately or supplied through an organization-level Secret. Rotate the AccessKey if it has been exposed outside the protected Environment Secrets interface, and never grant the RAM user console login or unrelated account-management permissions.
 
-Protect the Environment with required reviewers if available. Pull requests, including fork pull requests, run only `.github/workflows/ci.yml` and cannot access production secrets. Leave the non-secret Environment Variable `DEPLOY_ENABLED` unset during bootstrap. After every Environment Secret is ready, set it to `true`. A push to `main` then runs `.github/workflows/deploy.yml`, configures the Alibaba Cloud CLI from the protected AccessKey Secrets, updates the parameterized ROS stack, and deploys the function. Deployment output is withheld because Serverless Devs can print physical resource names.
+Provision the parameterized ROS stack once from a trusted local Alibaba Cloud CLI profile. Keep its generated names in a private local configuration file and copy only the values consumed by the function deployment into GitHub Environment Secrets. CI deliberately does not create or update SLS, OSS, or RAM resources.
+
+Protect the Environment with required reviewers if available. Pull requests, including fork pull requests, run only `.github/workflows/ci.yml` and cannot access production secrets. Leave the non-secret Repository Variable `DEPLOY_ENABLED` unset during bootstrap; job-level conditions are evaluated before Environment variables become available. After the local ROS bootstrap and every Environment Secret are ready, set the Repository Variable to `true`. A push to `main` then runs `.github/workflows/deploy.yml`, supplies the protected AccessKey Secrets directly to Serverless Devs, and deploys only the function and HTTP trigger. Deployment output is withheld because Serverless Devs can print physical resource names.
 
 The function's public HTTPS trigger URL is intentionally not treated as a secret: released clients must know it. It reveals neither SLS/OSS destinations nor cloud credentials.

@@ -14,7 +14,7 @@ No test requires Alibaba Cloud credentials.
 
 ## Infrastructure
 
-`infra/ros.yaml` owns the SLS Project and Logstores, the private diagnostics Bucket, indexes, and the least-privilege FC runtime role. Every physical resource name is a required deployment parameter so the public repository does not disclose storage targets. Preview the ROS stack before creating or updating it. The diagnostics Bucket is reserved for a later manually initiated upload flow; the v1 function has no OSS permissions.
+`infra/ros.yaml` owns the SLS Project and Logstores, indexes, and the least-privilege FC runtime role. Every physical resource name is a required deployment parameter so the public repository does not disclose storage targets. Preview the ROS stack before creating or updating it. The diagnostics upload namespace is reserved, but its private OSS Bucket is deferred until that manually initiated flow is implemented; the v1 function has no OSS permissions.
 
 Validate the template with:
 

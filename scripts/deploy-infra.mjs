@@ -5,7 +5,6 @@ const required = [
   'ALIYUN_REGION',
   'ROS_STACK_NAME',
   'SLS_PROJECT',
-  'DIAGNOSTICS_BUCKET',
   'SLS_INSTALLATIONS_LOGSTORE',
   'SLS_EVENTS_LOGSTORE',
   'FC_RUNTIME_LOGSTORE',
@@ -21,14 +20,20 @@ for (const name of required) {
 function aliyun(args, { allowNoChange = false } = {}) {
   const result = spawnSync('aliyun', args, { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
   if (result.status === 0) return result.stdout ? JSON.parse(result.stdout) : {};
+  const operation = args.slice(0, 2).join(' ');
+  const rawError = result.stderr || result.stdout || '';
   let error;
   try {
-    error = JSON.parse(result.stderr || result.stdout);
+    error = JSON.parse(rawError);
   } catch {
-    throw new Error('Alibaba Cloud CLI request failed');
+    const errorCode = rawError.match(/(?:ErrorCode|Code)\s*[:=]\s*([A-Za-z0-9._-]+)/i)?.[1]
+      ?? rawError.match(/\b(NoPermission|Forbidden|AccessDenied|InvalidAccessKeyId|SignatureDoesNotMatch)\b/i)?.[1]
+      ?? 'unknown_error';
+    if (allowNoChange && errorCode === 'NotSupported') return { noChange: true };
+    throw new Error(`Alibaba Cloud request failed (${operation}): ${errorCode}`);
   }
   if (allowNoChange && error.Code === 'NotSupported') return { noChange: true };
-  throw new Error(`Alibaba Cloud request failed: ${error.Code || 'unknown_error'}`);
+  throw new Error(`Alibaba Cloud request failed (${operation}): ${error.Code || 'unknown_error'}`);
 }
 
 const region = process.env.ALIYUN_REGION;
@@ -36,7 +41,6 @@ const stackName = process.env.ROS_STACK_NAME;
 const templateBody = await readFile(new URL('../infra/ros.yaml', import.meta.url), 'utf8');
 const values = [
   ['ProjectName', process.env.SLS_PROJECT],
-  ['DiagnosticsBucketName', process.env.DIAGNOSTICS_BUCKET],
   ['InstallationsLogstoreName', process.env.SLS_INSTALLATIONS_LOGSTORE],
   ['EventsLogstoreName', process.env.SLS_EVENTS_LOGSTORE],
   ['RuntimeLogstoreName', process.env.FC_RUNTIME_LOGSTORE],
@@ -53,6 +57,9 @@ const listed = aliyun([
   'ros', 'ListStacks', '--RegionId', region, '--StackName.1', stackName, '--PageSize', '10',
 ]);
 const existing = listed.Stacks?.find((stack) => stack.StackName === stackName);
+if (existing?.Status === 'CREATE_ROLLBACK_COMPLETE') {
+  throw new Error('ROS cannot update a stack whose initial creation rolled back; use a new stack name or delete the failed stack');
+}
 
 let stackId;
 if (!existing) {

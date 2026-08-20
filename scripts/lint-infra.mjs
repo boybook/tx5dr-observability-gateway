@@ -4,7 +4,6 @@ import { parse } from 'yaml';
 const template = parse(await readFile(new URL('../infra/ros.yaml', import.meta.url), 'utf8'));
 const privateParameters = [
   'ProjectName',
-  'DiagnosticsBucketName',
   'InstallationsLogstoreName',
   'EventsLogstoreName',
   'RuntimeLogstoreName',
@@ -20,9 +19,8 @@ for (const name of privateParameters) {
   if (parameter.NoEcho !== true) throw new Error(`Private ROS parameter must use NoEcho: ${name}`);
 }
 
-const bucket = template?.Resources?.DiagnosticsBucket?.Properties;
-if (bucket?.AccessControl !== 'private' || bucket?.BlockPublicAccess !== true) {
-  throw new Error('The reserved diagnostics bucket must block public access');
+if (template?.Resources?.DiagnosticsBucket) {
+  throw new Error('Diagnostics storage must remain deferred until its upload flow is implemented');
 }
 
 console.log('Infrastructure privacy invariants passed.');

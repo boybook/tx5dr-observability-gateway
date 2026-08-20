@@ -10,9 +10,6 @@ Parameters:
   ProjectName:
     Type: String
     NoEcho: true
-  DiagnosticsBucketName:
-    Type: String
-    NoEcho: true
   InstallationsLogstoreName:
     Type: String
     NoEcho: true
@@ -114,11 +111,12 @@ Resources:
 
   TelemetryInstallationsIndex:
     Type: ALIYUN::SLS::Index
+    DependsOn: TelemetryInstallations
     Properties:
       ProjectName:
         Ref: ObservabilityProject
       LogstoreName:
-        Ref: TelemetryInstallations
+        Ref: InstallationsLogstoreName
       FullTextIndex:
         Enable: false
       KeyIndices:
@@ -162,11 +160,12 @@ Resources:
 
   TelemetryEventsIndex:
     Type: ALIYUN::SLS::Index
+    DependsOn: TelemetryEvents
     Properties:
       ProjectName:
         Ref: ObservabilityProject
       LogstoreName:
-        Ref: TelemetryEvents
+        Ref: EventsLogstoreName
       FullTextIndex:
         Enable: false
       KeyIndices:
@@ -227,35 +226,6 @@ Resources:
           Type: text
           EnableAnalytics: true
 
-  DiagnosticsBucket:
-    Type: ALIYUN::OSS::Bucket
-    Properties:
-      BucketName:
-        Ref: DiagnosticsBucketName
-      AccessControl: private
-      BlockPublicAccess: true
-      StorageClass: Standard
-      RedundancyType: LRS
-      DeletionForce: false
-      ServerSideEncryptionConfiguration:
-        SSEAlgorithm: AES256
-      VersioningConfiguration:
-        Status: Suspended
-      LifecycleConfiguration:
-        Rule:
-          - ID: expire-diagnostics
-            Prefix: diagnostics/
-            Status: Enabled
-            Expiration:
-              Days: 30
-            AbortMultipartUpload:
-              Days: 1
-      Tags:
-        Project: TX5DR
-        Environment:
-          Ref: Environment
-        Purpose: Diagnostics
-
   GatewayRuntimeRole:
     Type: ALIYUN::RAM::Role
     Properties:
@@ -289,9 +259,6 @@ Outputs:
   ProjectName:
     Value:
       Ref: ObservabilityProject
-  DiagnosticsBucketName:
-    Value:
-      Ref: DiagnosticsBucket
   RuntimeRoleName:
     Value:
       Ref: GatewayRuntimeRole
