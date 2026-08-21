@@ -32,8 +32,8 @@ vi.mock('@alicloud/credentials', () => ({
 
 vi.mock('ali-oss', () => ({
   default: class {
-    options: Record<string, string>;
-    constructor(options: Record<string, string>) {
+    options: Record<string, string | boolean>;
+    constructor(options: Record<string, string | boolean>) {
       this.options = options;
       mocks.ossOptions(options);
     }
@@ -103,6 +103,7 @@ describe('diagnostic upload support', () => {
     });
     expect(policy.conditions).toContainEqual(['content-length-range', 123, 123]);
     expect(policy.conditions).toContainEqual(['eq', '$key', 'diagnostics/v1/object.log.gz']);
+    expect(mocks.ossOptions).toHaveBeenCalledWith(expect.objectContaining({ internal: false }));
   });
 
   it('normalizes object metadata returned by OSS HEAD', async () => {
@@ -113,6 +114,7 @@ describe('diagnostic upload support', () => {
       contentType: 'application/gzip',
       etag: 'object-etag',
     });
+    expect(mocks.ossOptions).toHaveBeenCalledWith(expect.objectContaining({ internal: true }));
   });
 
   it('binds receipts to installation, upload id, and expiry', () => {
