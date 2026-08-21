@@ -46,9 +46,77 @@ paths:
           description: Rate limited
         '503':
           description: SLS unavailable
+  /v1/diagnostics/authorize:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiagnosticAuthorization'
+      responses:
+        '201':
+          description: Short-lived diagnostic token issued without recording an installation
+        '400':
+          description: Invalid request
+        '429':
+          description: Rate limited
+  /v1/diagnostics/uploads:
+    post:
+      security:
+        - diagnosticToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiagnosticUpload'
+      responses:
+        '201':
+          description: Bounded OSS upload form and signed completion receipt
+        '400':
+          description: Invalid request
+        '401':
+          description: Invalid diagnostic token
+        '429':
+          description: Rate limited
+  /v1/diagnostics/uploads/{uploadId}/complete:
+    post:
+      security:
+        - diagnosticToken: []
+      parameters:
+        - in: path
+          name: uploadId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [schema_version, upload_receipt]
+              properties:
+                schema_version: { const: 1 }
+                upload_receipt: { type: string, maxLength: 16384 }
+                feedback: { type: string, maxLength: 2000 }
+      responses:
+        '202':
+          description: Object verified and metadata accepted
+        '400':
+          description: Invalid or expired upload receipt
+        '401':
+          description: Invalid diagnostic token
+        '409':
+          description: Uploaded object does not match the signed declaration
 components:
   securitySchemes:
     installationToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    diagnosticToken:
       type: http
       scheme: bearer
       bearerFormat: JWT
@@ -73,6 +141,33 @@ components:
         registration_event_id: { type: string, format: uuid }
         installation_id: { type: string, format: uuid }
         app: { $ref: '#/components/schemas/AppMetadata' }
+    DiagnosticAuthorization:
+      type: object
+      additionalProperties: false
+      required: [schema_version, authorization_event_id, installation_id, app]
+      properties:
+        schema_version: { const: 1 }
+        authorization_event_id: { type: string, format: uuid }
+        installation_id: { type: string, format: uuid }
+        app: { $ref: '#/components/schemas/AppMetadata' }
+    DiagnosticUpload:
+      type: object
+      additionalProperties: false
+      required: [schema_version, upload_id, app, source_id, requested_from_ms, requested_to_ms, included_from_ms, included_to_ms, line_count, uncompressed_bytes, compressed_bytes, sha256]
+      properties:
+        schema_version: { const: 1 }
+        upload_id: { type: string, format: uuid }
+        app: { $ref: '#/components/schemas/AppMetadata' }
+        source_id: { enum: [server, electron-main, client-tools] }
+        requested_from_ms: { type: integer }
+        requested_to_ms: { type: integer }
+        included_from_ms: { type: integer }
+        included_to_ms: { type: integer }
+        line_count: { type: integer, minimum: 1 }
+        uncompressed_bytes: { type: integer, minimum: 1, maximum: 52428800 }
+        compressed_bytes: { type: integer, minimum: 1, maximum: 20971520 }
+        sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+        is_test: { type: boolean, default: false }
     EventBatch:
       type: object
       additionalProperties: false

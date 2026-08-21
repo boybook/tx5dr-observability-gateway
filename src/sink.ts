@@ -1,7 +1,7 @@
 import Credential, { Config as CredentialConfig } from '@alicloud/credentials';
 import SlsClient from '@alicloud/log';
 import type { GatewayConfig } from './config.js';
-import type { AppMetadata, Registration, TelemetryEvent } from './schema.js';
+import type { AppMetadata, DiagnosticComplete, DiagnosticUpload, Registration, TelemetryEvent } from './schema.js';
 
 export interface FlatLogRecord {
   timeSeconds: number;
@@ -11,6 +11,38 @@ export interface FlatLogRecord {
 export interface TelemetrySink {
   putInstallation(record: FlatLogRecord): Promise<void>;
   putEvents(records: FlatLogRecord[]): Promise<void>;
+  putDiagnostic(record: FlatLogRecord): Promise<void>;
+}
+
+export function mapDiagnosticUpload(
+  upload: DiagnosticUpload,
+  complete: DiagnosticComplete,
+  installationKey: string,
+  objectKey: string,
+  objectEtag: string,
+  receivedAtMs: number,
+  requestId: string,
+): FlatLogRecord {
+  return {
+    timeSeconds: Math.floor(receivedAtMs / 1000),
+    fields: {
+      ...commonFields(upload.upload_id, 'diagnostic_upload_completed', installationKey, upload.app, receivedAtMs, requestId),
+      upload_id: upload.upload_id,
+      source_id: upload.source_id,
+      requested_from_ms: upload.requested_from_ms,
+      requested_to_ms: upload.requested_to_ms,
+      included_from_ms: upload.included_from_ms,
+      included_to_ms: upload.included_to_ms,
+      line_count: upload.line_count,
+      uncompressed_bytes: upload.uncompressed_bytes,
+      compressed_bytes: upload.compressed_bytes,
+      sha256: upload.sha256,
+      object_key: objectKey,
+      object_etag: objectEtag,
+      feedback: complete.feedback ?? '',
+      is_test: upload.is_test ? 1 : 0,
+    },
+  };
 }
 
 export interface AliyunTemporaryCredentials {
@@ -118,6 +150,10 @@ export class AliyunSlsSink implements TelemetrySink {
 
   putEvents(records: FlatLogRecord[]): Promise<void> {
     return this.put(this.config.SLS_EVENTS_LOGSTORE, records);
+  }
+
+  putDiagnostic(record: FlatLogRecord): Promise<void> {
+    return this.put(this.config.SLS_DIAGNOSTIC_METADATA_LOGSTORE, [record]);
   }
 
   private async put(logstore: string, records: FlatLogRecord[]): Promise<void> {

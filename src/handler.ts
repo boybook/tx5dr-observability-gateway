@@ -1,8 +1,19 @@
 import { randomUUID } from 'node:crypto';
 import type { GatewayConfig } from './config.js';
-import { EventBatchSchema, RegistrationSchema } from './schema.js';
+import {
+  DiagnosticAuthorizationSchema,
+  DiagnosticCompleteSchema,
+  DiagnosticUploadSchema,
+  EventBatchSchema,
+  RegistrationSchema,
+} from './schema.js';
 import { deriveInstallationKey, InstallationTokenService } from './token.js';
-import { mapRegistration, mapTelemetryEvent, type TelemetrySink } from './sink.js';
+import { mapDiagnosticUpload, mapRegistration, mapTelemetryEvent, type TelemetrySink } from './sink.js';
+import {
+  diagnosticObjectKey,
+  type DiagnosticStorage,
+  UploadReceiptService,
+} from './diagnostics.js';
 
 const MAX_BODY_BYTES = 32 * 1024;
 const MAX_CLOCK_SKEW_MS = 24 * 60 * 60 * 1000;
@@ -13,6 +24,9 @@ function classifyOperationalError(error: unknown): string {
   if (/InvalidAccessKeyId|SignatureDoesNotMatch|SecurityToken/i.test(message)) return 'sls_credential_rejected';
   if (/ProjectNotExist/i.test(message)) return 'sls_project_not_found';
   if (/LogStoreNotExist/i.test(message)) return 'sls_logstore_not_found';
+  if (/NoSuchBucket|BucketNotExist/i.test(message)) return 'oss_bucket_not_found';
+  if (/NoSuchKey|ObjectNotExist/i.test(message)) return 'oss_object_not_found';
+  if (/InvalidArgument|InvalidPolicyDocument/i.test(message)) return 'oss_policy_invalid';
   if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|getaddrinfo/i.test(message)) return 'sls_endpoint_unreachable';
   return 'sls_write_failed';
 }
@@ -94,6 +108,7 @@ class WarmInstanceLimiter {
 export function createHandler(options: {
   config: GatewayConfig;
   sink: TelemetrySink;
+  storage?: DiagnosticStorage;
   now?: () => number;
 }) {
   const tokenService = new InstallationTokenService(
@@ -103,6 +118,11 @@ export function createHandler(options: {
   );
   const now = options.now ?? Date.now;
   const limiter = new WarmInstanceLimiter();
+  const receiptService = new UploadReceiptService(
+    options.config.TOKEN_SIGNING_KEY_CURRENT,
+    options.config.TOKEN_SIGNING_KEY_ID,
+    options.config.TOKEN_SIGNING_KEY_PREVIOUS,
+  );
 
   return async function handler(rawEvent: unknown, context: FcContext = {}): Promise<FcResponse> {
     const requestId = context.requestId || randomUUID();
@@ -161,6 +181,116 @@ export function createHandler(options: {
           schema_version: 1,
           accepted_event_ids: batch.events.map((item) => item.event_id),
           server_time_ms: nowMs,
+        });
+      }
+
+      if (method === 'POST' && path === '/v1/diagnostics/authorize') {
+        const nowMs = now();
+        if (!limiter.allow('diagnostic-authorization', nowMs, 120)) {
+          return response(429, { error: 'rate_limited', request_id: requestId }, { 'retry-after': '60' });
+        }
+        const authorization = DiagnosticAuthorizationSchema.parse(parseJsonBody(event));
+        const installationKey = deriveInstallationKey(
+          authorization.installation_id,
+          options.config.INSTALLATION_HMAC_KEY,
+        );
+        const issued = tokenService.issueDiagnostic(installationKey, Math.floor(nowMs / 1000));
+        return response(201, {
+          schema_version: 1,
+          diagnostics_token: issued.token,
+          token_expires_at: new Date(issued.expiresAt * 1000).toISOString(),
+          server_time_ms: nowMs,
+          limits: {
+            max_range_seconds: 7 * 24 * 60 * 60,
+            max_uncompressed_bytes: 50 * 1024 * 1024,
+            max_compressed_bytes: 20 * 1024 * 1024,
+            feedback_max_characters: 2000,
+            upload_expires_seconds: 10 * 60,
+          },
+        });
+      }
+
+      if (method === 'POST' && path === '/v1/diagnostics/uploads') {
+        if (!options.storage) return response(503, { error: 'temporarily_unavailable', request_id: requestId });
+        const nowMs = now();
+        const token = bearerToken(event.headers);
+        if (!token) return response(401, { error: 'unauthorized', request_id: requestId });
+        let installationKey: string;
+        try {
+          installationKey = tokenService.verify(token, Math.floor(nowMs / 1000), 'diagnostics:write');
+        } catch {
+          return response(401, { error: 'unauthorized', request_id: requestId });
+        }
+        if (!limiter.allow(`diagnostic-upload:${installationKey}`, nowMs, 12)) {
+          return response(429, { error: 'rate_limited', request_id: requestId }, { 'retry-after': '60' });
+        }
+        const upload = DiagnosticUploadSchema.parse(parseJsonBody(event));
+        if (upload.requested_to_ms > nowMs + 5 * 60 * 1000) {
+          return response(400, { error: 'event_time_out_of_range', request_id: requestId });
+        }
+        const objectKey = diagnosticObjectKey(installationKey, upload.upload_id, nowMs);
+        const grant = await options.storage.createUploadGrant(objectKey, upload, nowMs);
+        const uploadReceipt = receiptService.issue({
+          sub: installationKey,
+          object_key: objectKey,
+          upload,
+        }, Math.floor(nowMs / 1000));
+        return response(201, {
+          schema_version: 1,
+          upload_id: upload.upload_id,
+          upload_url: grant.uploadUrl,
+          form_fields: grant.formFields,
+          upload_receipt: uploadReceipt,
+          expires_at: new Date(grant.expiresAt).toISOString(),
+        });
+      }
+
+      const completeMatch = path.match(/^\/v1\/diagnostics\/uploads\/([0-9a-f-]{36})\/complete$/i);
+      if (method === 'POST' && completeMatch) {
+        if (!options.storage) return response(503, { error: 'temporarily_unavailable', request_id: requestId });
+        const nowMs = now();
+        const token = bearerToken(event.headers);
+        if (!token) return response(401, { error: 'unauthorized', request_id: requestId });
+        let installationKey: string;
+        try {
+          installationKey = tokenService.verify(token, Math.floor(nowMs / 1000), 'diagnostics:write');
+        } catch {
+          return response(401, { error: 'unauthorized', request_id: requestId });
+        }
+        const complete = DiagnosticCompleteSchema.parse(parseJsonBody(event));
+        let receipt;
+        try {
+          receipt = receiptService.verify(
+            complete.upload_receipt,
+            installationKey,
+            completeMatch[1],
+            Math.floor(nowMs / 1000),
+          );
+        } catch {
+          return response(400, { error: 'invalid_upload_receipt', request_id: requestId });
+        }
+        const object = await options.storage.headObject(receipt.object_key);
+        if (
+          object.size !== receipt.upload.compressed_bytes
+          || object.sha256 !== receipt.upload.sha256
+          || !object.contentType.toLowerCase().startsWith('application/gzip')
+        ) {
+          return response(409, { error: 'uploaded_object_mismatch', request_id: requestId });
+        }
+        await options.sink.putDiagnostic(mapDiagnosticUpload(
+          receipt.upload,
+          complete,
+          installationKey,
+          receipt.object_key,
+          object.etag,
+          nowMs,
+          requestId,
+        ));
+        return response(202, {
+          schema_version: 1,
+          upload_id: receipt.upload.upload_id,
+          accepted_at: new Date(nowMs).toISOString(),
+          retained_until: new Date(nowMs + 30 * 24 * 60 * 60 * 1000).toISOString(),
         });
       }
 

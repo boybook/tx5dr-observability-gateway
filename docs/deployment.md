@@ -10,6 +10,8 @@ The repository is public, but its production topology is not. Create a protected
 - `SLS_PROJECT`
 - `SLS_INSTALLATIONS_LOGSTORE`
 - `SLS_EVENTS_LOGSTORE`
+- `DIAGNOSTIC_METADATA_LOGSTORE`
+- `DIAGNOSTICS_BUCKET`
 - `FC_RUNTIME_LOGSTORE`
 - `FC_FUNCTION_NAME`
 - `FC_RUNTIME_ROLE_NAME`
@@ -22,7 +24,7 @@ Use independent cryptographically random values of at least 32 bytes for the cur
 
 Use a dedicated RAM user or narrowly scoped existing RAM user whose AccessKey permits only the FC operations exercised by this deployment and `ram:PassRole` for the existing runtime role. GitHub cannot copy or reveal a Secret from another repository, so shared credentials must be entered separately or supplied through an organization-level Secret. Rotate the AccessKey if it has been exposed outside the protected Environment Secrets interface, and never grant the RAM user console login or unrelated account-management permissions.
 
-Provision the parameterized ROS stack once from a trusted local Alibaba Cloud CLI profile. Keep its generated names in a private local configuration file and copy only the values consumed by the function deployment into GitHub Environment Secrets. CI deliberately does not create or update SLS, OSS, or RAM resources.
+Provision or update the parameterized ROS stack from a trusted local Alibaba Cloud CLI profile. Keep its generated names in a private local configuration file and copy only the values consumed by the function deployment into GitHub Environment Secrets. CI deliberately does not create or update SLS, OSS, or RAM resources.
 
 Protect the Environment with required reviewers if available. Pull requests, including fork pull requests, run only `.github/workflows/ci.yml` and cannot access production secrets. Leave the non-secret Repository Variable `DEPLOY_ENABLED` unset during bootstrap; job-level conditions are evaluated before Environment variables become available. After the local ROS bootstrap and every Environment Secret are ready, set the Repository Variable to `true`. A push to `main` then runs `.github/workflows/deploy.yml`, supplies the protected AccessKey Secrets directly to Serverless Devs, and deploys only the function and HTTP trigger. Deployment output is withheld because Serverless Devs can print physical resource names.
 

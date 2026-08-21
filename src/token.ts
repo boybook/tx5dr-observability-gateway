@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 
 const ISSUER = 'tx5dr-observability-gateway';
 const AUDIENCE = 'tx5dr-observability';
-const TOKEN_LIFETIME_SECONDS = 365 * 24 * 60 * 60;
+const TELEMETRY_TOKEN_LIFETIME_SECONDS = 365 * 24 * 60 * 60;
 
 interface TokenPayload {
   iss: string;
@@ -49,14 +49,36 @@ export class InstallationTokenService {
       sub: installationKey,
       scope: 'telemetry:write',
       iat: nowSeconds,
-      exp: nowSeconds + TOKEN_LIFETIME_SECONDS,
+      exp: nowSeconds + TELEMETRY_TOKEN_LIFETIME_SECONDS,
     };
     const unsigned = `${encodeJson(header)}.${encodeJson(payload)}`;
     const signature = sign(unsigned, this.currentKey).toString('base64url');
     return { token: `${unsigned}.${signature}`, expiresAt: payload.exp };
   }
 
-  verify(token: string, nowSeconds = Math.floor(Date.now() / 1000)): string {
+  issueDiagnostic(installationKey: string, nowSeconds = Math.floor(Date.now() / 1000)): {
+    token: string;
+    expiresAt: number;
+  } {
+    const header: TokenHeader = { alg: 'HS256', typ: 'JWT', kid: this.currentKeyId };
+    const payload: TokenPayload = {
+      iss: ISSUER,
+      aud: AUDIENCE,
+      sub: installationKey,
+      scope: 'diagnostics:write',
+      iat: nowSeconds,
+      exp: nowSeconds + 15 * 60,
+    };
+    const unsigned = `${encodeJson(header)}.${encodeJson(payload)}`;
+    const signature = sign(unsigned, this.currentKey).toString('base64url');
+    return { token: `${unsigned}.${signature}`, expiresAt: payload.exp };
+  }
+
+  verify(
+    token: string,
+    nowSeconds = Math.floor(Date.now() / 1000),
+    requiredScope = 'telemetry:write',
+  ): string {
     const parts = token.split('.');
     if (parts.length !== 3) throw new Error('invalid_token');
 
@@ -84,7 +106,7 @@ export class InstallationTokenService {
     if (
       payload.iss !== ISSUER
       || payload.aud !== AUDIENCE
-      || payload.scope !== 'telemetry:write'
+      || payload.scope !== requiredScope
       || typeof payload.sub !== 'string'
       || payload.sub.length < 20
       || !Number.isInteger(payload.exp)

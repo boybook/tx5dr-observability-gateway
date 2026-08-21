@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   createHandler: vi.fn(),
   handler: vi.fn(),
   sinkConstructor: vi.fn(),
+  storageConstructor: vi.fn(),
 }));
 
 vi.mock('../src/config.js', () => ({
@@ -18,6 +19,14 @@ vi.mock('../src/sink.js', () => ({
   AliyunSlsSink: class {
     constructor(...args: unknown[]) {
       mocks.sinkConstructor(...args);
+    }
+  },
+}));
+
+vi.mock('../src/diagnostics.js', () => ({
+  AliyunOssDiagnosticStorage: class {
+    constructor(...args: unknown[]) {
+      mocks.storageConstructor(...args);
     }
   },
 }));
@@ -39,6 +48,7 @@ describe('FC entrypoint', () => {
     await handler({}, { requestId: 'test-request', credentials });
 
     expect(mocks.sinkConstructor).toHaveBeenCalledWith({ test: 'config' }, credentials);
+    expect(mocks.storageConstructor).toHaveBeenCalledWith({ test: 'config' }, credentials);
     expect(mocks.handler).toHaveBeenCalledWith({}, { requestId: 'test-request', credentials });
   });
 });
