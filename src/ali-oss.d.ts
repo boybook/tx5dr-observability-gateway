@@ -6,6 +6,7 @@ declare module 'ali-oss' {
     accessKeySecret: string;
     stsToken?: string;
     secure?: boolean;
+    internal?: boolean;
   }
 
   interface HeadResult {

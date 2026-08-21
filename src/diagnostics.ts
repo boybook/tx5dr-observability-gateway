@@ -30,7 +30,8 @@ export interface DiagnosticStorage {
 }
 
 export class AliyunOssDiagnosticStorage implements DiagnosticStorage {
-  private clientPromise: Promise<OSS> | null = null;
+  private publicClientPromise: Promise<OSS> | null = null;
+  private internalClientPromise: Promise<OSS> | null = null;
   private readonly credential: Credential;
 
   constructor(
@@ -42,8 +43,8 @@ export class AliyunOssDiagnosticStorage implements DiagnosticStorage {
       : new Credential();
   }
 
-  private getClient(): Promise<OSS> {
-    this.clientPromise ??= this.credential.getCredential().then((current) => {
+  private getClient(internal: boolean): Promise<OSS> {
+    const createClient = () => this.credential.getCredential().then((current) => {
       if (!current.accessKeyId || !current.accessKeySecret) throw new Error('Missing Alibaba Cloud credentials');
       return new OSS({
         region: `oss-${this.config.OSS_REGION}`,
@@ -52,13 +53,19 @@ export class AliyunOssDiagnosticStorage implements DiagnosticStorage {
         accessKeySecret: current.accessKeySecret,
         stsToken: current.securityToken,
         secure: true,
+        internal,
       });
     });
-    return this.clientPromise;
+    if (internal) {
+      this.internalClientPromise ??= createClient();
+      return this.internalClientPromise;
+    }
+    this.publicClientPromise ??= createClient();
+    return this.publicClientPromise;
   }
 
   async createUploadGrant(objectKey: string, upload: DiagnosticUpload, nowMs: number): Promise<DiagnosticUploadGrant> {
-    const client = await this.getClient();
+    const client = await this.getClient(false);
     const issuedAt = new Date(nowMs);
     const expiresAt = nowMs + 10 * 60 * 1000;
     const formattedDate = issuedAt.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
@@ -100,7 +107,7 @@ export class AliyunOssDiagnosticStorage implements DiagnosticStorage {
   }
 
   async headObject(objectKey: string): Promise<DiagnosticObjectMetadata> {
-    const result = await (await this.getClient()).head(objectKey);
+    const result = await (await this.getClient(true)).head(objectKey);
     const headers = Object.fromEntries(Object.entries(result.res.headers).map(([key, value]) => [key.toLowerCase(), value]));
     return {
       size: Number(headers['content-length']),
