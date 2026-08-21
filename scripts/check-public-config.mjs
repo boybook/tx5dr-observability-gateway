@@ -42,6 +42,7 @@ for (const line of envExample.split(/\r?\n/)) {
 const serverless = await readFile(new URL('../s.yaml', import.meta.url), 'utf8');
 for (const name of [
   'SLS_ENDPOINT', 'SLS_PROJECT', 'SLS_INSTALLATIONS_LOGSTORE', 'SLS_EVENTS_LOGSTORE',
+  'DIAGNOSTIC_METADATA_LOGSTORE', 'DIAGNOSTICS_BUCKET',
   'TOKEN_SIGNING_KEY_CURRENT', 'TOKEN_SIGNING_KEY_PREVIOUS', 'INSTALLATION_HMAC_KEY',
   'FC_FUNCTION_NAME', 'FC_RUNTIME_ROLE_ARN', 'FC_RUNTIME_LOGSTORE',
 ]) {

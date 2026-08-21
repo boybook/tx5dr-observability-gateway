@@ -25,6 +25,49 @@ export const RegistrationSchema = z.object({
   app: AppMetadataSchema,
 }).strict();
 
+export const DiagnosticAuthorizationSchema = z.object({
+  schema_version: z.literal(1),
+  authorization_event_id: z.string().uuid(),
+  installation_id: z.string().uuid(),
+  app: AppMetadataSchema,
+}).strict();
+
+export const DiagnosticSourceSchema = z.enum(['server', 'electron-main', 'client-tools']);
+
+export const DiagnosticUploadSchema = z.object({
+  schema_version: z.literal(1),
+  upload_id: z.string().uuid(),
+  app: AppMetadataSchema,
+  source_id: DiagnosticSourceSchema,
+  requested_from_ms: z.number().int().positive(),
+  requested_to_ms: z.number().int().positive(),
+  included_from_ms: z.number().int().positive(),
+  included_to_ms: z.number().int().positive(),
+  line_count: z.number().int().positive(),
+  uncompressed_bytes: z.number().int().positive().max(50 * 1024 * 1024),
+  compressed_bytes: z.number().int().positive().max(20 * 1024 * 1024),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  is_test: z.boolean().optional().default(false),
+}).strict().superRefine((value, context) => {
+  if (value.requested_to_ms <= value.requested_from_ms) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['requested_to_ms'], message: 'invalid requested time range' });
+  }
+  if (value.requested_to_ms - value.requested_from_ms > 7 * 24 * 60 * 60 * 1000) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['requested_to_ms'], message: 'requested time range exceeds seven days' });
+  }
+  if (value.included_to_ms < value.included_from_ms
+    || value.included_from_ms < value.requested_from_ms
+    || value.included_to_ms > value.requested_to_ms) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['included_to_ms'], message: 'included range must be inside requested range' });
+  }
+});
+
+export const DiagnosticCompleteSchema = z.object({
+  schema_version: z.literal(1),
+  upload_receipt: z.string().min(32).max(16_384),
+  feedback: z.string().trim().max(2000).optional(),
+}).strict();
+
 const EventBaseSchema = z.object({
   event_id: z.string().uuid(),
   occurred_at_ms: z.number().int().positive(),
@@ -67,5 +110,8 @@ export const EventBatchSchema = z.object({
 
 export type AppMetadata = z.infer<typeof AppMetadataSchema>;
 export type Registration = z.infer<typeof RegistrationSchema>;
+export type DiagnosticAuthorization = z.infer<typeof DiagnosticAuthorizationSchema>;
+export type DiagnosticUpload = z.infer<typeof DiagnosticUploadSchema>;
+export type DiagnosticComplete = z.infer<typeof DiagnosticCompleteSchema>;
 export type TelemetryEvent = z.infer<typeof TelemetryEventSchema>;
 export type EventBatch = z.infer<typeof EventBatchSchema>;

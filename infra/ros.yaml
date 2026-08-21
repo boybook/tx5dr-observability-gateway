@@ -10,6 +10,9 @@ Parameters:
   ProjectName:
     Type: String
     NoEcho: true
+  DiagnosticsBucketName:
+    Type: String
+    NoEcho: true
   InstallationsLogstoreName:
     Type: String
     NoEcho: true
@@ -119,6 +122,86 @@ Resources:
       AutoSplit: true
       MaxSplitShard: 8
       Mode: standard
+
+  DiagnosticMetadataIndex:
+    Type: ALIYUN::SLS::Index
+    DependsOn: DiagnosticMetadata
+    Properties:
+      ProjectName:
+        Ref: ObservabilityProject
+      LogstoreName:
+        Ref: DiagnosticMetadataLogstoreName
+      FullTextIndex:
+        Enable: true
+      KeyIndices:
+        - Name: schema_version
+          Type: long
+          EnableAnalytics: true
+        - Name: event_name
+          Type: text
+          EnableAnalytics: true
+        - Name: received_at_ms
+          Type: long
+          EnableAnalytics: true
+        - Name: upload_id
+          Type: text
+          EnableAnalytics: true
+          CaseSensitive: true
+        - Name: installation_key
+          Type: text
+          EnableAnalytics: true
+          CaseSensitive: true
+        - Name: app_version
+          Type: text
+          EnableAnalytics: true
+          CaseSensitive: true
+        - Name: build_channel
+          Type: text
+          EnableAnalytics: true
+        - Name: distribution
+          Type: text
+          EnableAnalytics: true
+        - Name: os_family
+          Type: text
+          EnableAnalytics: true
+        - Name: arch
+          Type: text
+          EnableAnalytics: true
+        - Name: source_id
+          Type: text
+          EnableAnalytics: true
+        - Name: requested_from_ms
+          Type: long
+          EnableAnalytics: true
+        - Name: requested_to_ms
+          Type: long
+          EnableAnalytics: true
+        - Name: included_from_ms
+          Type: long
+          EnableAnalytics: true
+        - Name: included_to_ms
+          Type: long
+          EnableAnalytics: true
+        - Name: line_count
+          Type: long
+          EnableAnalytics: true
+        - Name: uncompressed_bytes
+          Type: long
+          EnableAnalytics: true
+        - Name: compressed_bytes
+          Type: long
+          EnableAnalytics: true
+        - Name: sha256
+          Type: text
+          EnableAnalytics: true
+          CaseSensitive: true
+        - Name: object_key
+          Type: text
+          EnableAnalytics: true
+          CaseSensitive: true
+        - Name: is_test
+          Type: long
+          EnableAnalytics: true
 
   TelemetryInstallationsIndex:
     Type: ALIYUN::SLS::Index
@@ -237,6 +320,35 @@ Resources:
           Type: text
           EnableAnalytics: true
 
+  DiagnosticsBucket:
+    Type: ALIYUN::OSS::Bucket
+    Properties:
+      BucketName:
+        Ref: DiagnosticsBucketName
+      AccessControl: private
+      BlockPublicAccess: true
+      StorageClass: Standard
+      RedundancyType: LRS
+      DeletionForce: false
+      ServerSideEncryptionConfiguration:
+        SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Suspended
+      LifecycleConfiguration:
+        Rule:
+          - ID: expire-diagnostics
+            Prefix: diagnostics/
+            Status: Enabled
+            Expiration:
+              Days: 30
+            AbortMultipartUpload:
+              Days: 1
+      Tags:
+        Project: TX5DR
+        Environment:
+          Ref: Environment
+        Purpose: Diagnostics
+
   GatewayRuntimeRole:
     Type: ALIYUN::RAM::Role
     Properties:
@@ -265,11 +377,21 @@ Resources:
                 Resource:
                   - Fn::Sub: acs:log:${ALIYUN::Region}:*:project/${ProjectName}/logstore/${InstallationsLogstoreName}
                   - Fn::Sub: acs:log:${ALIYUN::Region}:*:project/${ProjectName}/logstore/${EventsLogstoreName}
+                  - Fn::Sub: acs:log:${ALIYUN::Region}:*:project/${ProjectName}/logstore/${DiagnosticMetadataLogstoreName}
+              - Effect: Allow
+                Action:
+                  - oss:PutObject
+                  - oss:GetObject
+                Resource:
+                  - Fn::Sub: acs:oss:*:*:${DiagnosticsBucketName}/diagnostics/v1/*
 
 Outputs:
   ProjectName:
     Value:
       Ref: ObservabilityProject
+  DiagnosticsBucketName:
+    Value:
+      Ref: DiagnosticsBucket
   RuntimeRoleName:
     Value:
       Ref: GatewayRuntimeRole

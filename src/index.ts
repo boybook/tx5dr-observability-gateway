@@ -1,6 +1,7 @@
 import { loadConfig } from './config.js';
 import { createHandler } from './handler.js';
 import { AliyunSlsSink, type AliyunTemporaryCredentials } from './sink.js';
+import { AliyunOssDiagnosticStorage } from './diagnostics.js';
 
 let productionHandler: ReturnType<typeof createHandler> | null = null;
 let activeCredentials: Pick<AliyunTemporaryCredentials, 'accessKeyId' | 'securityToken'> | null | undefined;
@@ -24,6 +25,7 @@ export async function handler(event: unknown, context: FcContext = {}) {
     productionHandler = createHandler({
       config,
       sink: new AliyunSlsSink(config, context.credentials),
+      storage: new AliyunOssDiagnosticStorage(config, context.credentials),
     });
     activeCredentials = context.credentials
       ? {

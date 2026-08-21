@@ -5,6 +5,7 @@ const required = [
   'ALIYUN_REGION',
   'ROS_STACK_NAME',
   'SLS_PROJECT',
+  'DIAGNOSTICS_BUCKET',
   'SLS_INSTALLATIONS_LOGSTORE',
   'SLS_EVENTS_LOGSTORE',
   'FC_RUNTIME_LOGSTORE',
@@ -41,6 +42,7 @@ const stackName = process.env.ROS_STACK_NAME;
 const templateBody = await readFile(new URL('../infra/ros.yaml', import.meta.url), 'utf8');
 const values = [
   ['ProjectName', process.env.SLS_PROJECT],
+  ['DiagnosticsBucketName', process.env.DIAGNOSTICS_BUCKET],
   ['InstallationsLogstoreName', process.env.SLS_INSTALLATIONS_LOGSTORE],
   ['EventsLogstoreName', process.env.SLS_EVENTS_LOGSTORE],
   ['RuntimeLogstoreName', process.env.FC_RUNTIME_LOGSTORE],
